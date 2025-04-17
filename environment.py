@@ -1,12 +1,16 @@
 import asyncio
-import math
 import numpy as np
+from scipy.spatial import distance
 
 from centrifuge import Client, SubscriptionEventHandler, PublicationContext
+import gymnasium as gym
 
 TIMESTEP_MS = 1000
 ROBOT_COUNT = 1
 SPAWN_RADIUS = 0.9
+
+OBSERVATION_SIZE = 69
+ACTION_SIZE = 8
 
 
 class WorldControllerBase:
@@ -62,6 +66,7 @@ class WorldControllerBase:
 
 
 class WorldController(WorldControllerBase):
+
     async def on_start(self):
         await self.rpc("session.restart", None)
         self.robot = VehicleController(1)
@@ -84,10 +89,16 @@ class WorldController(WorldControllerBase):
             self.robot.control(self, control_arguments),
             self.rpc("session.step", None),
         ]
-        state = await self.robot.state(self)
+        state = await self.robot.state_urdf(self)
+        position = await self.robot.position(self)
         await asyncio.gather(*commands)
 
-        return state
+        return (state, position)
+
+    async def restart(self):
+        commands = [self.robot.despawn(self), self.robot.spawn(self)]
+
+        await asyncio.gather(*commands)
 
 
 class VehicleController:
@@ -109,17 +120,66 @@ class VehicleController:
         )
 
     async def despawn(self, world):
-        await world.rpc("object_{object}.despawn".format(object=self.entity), None)
+        cmd = "object_{object}.despawn".format(object=self.entity)
+        await world.rpc(cmd, None)
         self.entity = None
 
-    async def state(self, world):
+    async def state_urdf(self, world):
         state = await world.rpc(
             "object_{object}.state_urdf".format(object=self.entity),
             None,
         )
-        print(state)
         state_vec = np.array(state["state"])
         return state_vec
 
+    async def position(self, world):
+        state = await world.rpc(
+            "object_{object}.position".format(object=self.entity),
+            None,
+        )
+        return np.array([state["x"], state["y"], state["z"]])
+
     async def control(self, world, control_arguments):
-        pass
+        cmd = "object_{object}.actuator_control".format(object=self.entity)
+        await world.rpc(cmd, control_arguments)
+
+
+class Environment(gym.Env):
+
+    def __init__(self):
+        self.world = WorldController()
+        self.step_count = 0
+
+        self.observation_space = gym.spaces.Box(
+            low=-np.inf, high=np.inf, shape=(OBSERVATION_SIZE,), dtype=float
+        )
+        self.action_space = gym.spaces.Box(
+            low=-10.0, high=10.0, shape=(ACTION_SIZE,), dtype=float
+        )
+        self.prev_distance = 0
+
+    async def step(self, action):
+        (state, position) = await self.world.step(action)
+
+        is_terminated = self.step_count >= 5000
+
+        dst = distance.euclidean(position, np.zeros(3))
+        reward = dst - self.prev_distance
+        self.prev_distance = dst
+
+        self.step_count += 1
+
+        return (
+            state,
+            reward,
+            is_terminated,
+            is_terminated,
+            {},
+        )
+
+    async def reset(self, seed=1337):
+        await self.world.restart()
+        return np.zeros(OBSERVATION_SIZE), {}
+
+    def render():
+        None
