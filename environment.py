@@ -1,9 +1,12 @@
 import asyncio
+import asyncio
 import numpy as np
-from scipy.spatial import distance
-
-from centrifuge import Client, SubscriptionEventHandler, PublicationContext
 import gymnasium as gym
+
+
+from scipy.spatial import distance
+from functools import wraps
+from centrifuge import Client, SubscriptionEventHandler, PublicationContext
 
 TIMESTEP_MS = 1000
 ROBOT_COUNT = 1
@@ -11,6 +14,16 @@ SPAWN_RADIUS = 0.9
 
 OBSERVATION_SIZE = 69
 ACTION_SIZE = 8
+
+
+def sync_wrap(func):
+    """Decorator to run an async function synchronously."""
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        return asyncio.run(func(*args, **kwargs))
+
+    return wrapper
 
 
 class WorldControllerBase:
@@ -80,7 +93,7 @@ class WorldController(WorldControllerBase):
     async def on_tick(self, _tick):
         commands = [
             self.rpc("session.step", None),
-            self.robot.control(self, self.control_arguments),
+            # self.robot.control(self, self.control_arguments),
         ]
         await asyncio.gather(*commands)
 
@@ -96,7 +109,15 @@ class WorldController(WorldControllerBase):
         return (state, position)
 
     async def restart(self):
-        commands = [self.robot.despawn(self), self.robot.spawn(self)]
+
+        # there is currently erro in how despawn / spawn work
+
+        return None
+
+        commands = [
+            self.robot.despawn(self),
+            self.robot.spawn(self),
+        ]
 
         await asyncio.gather(*commands)
 
@@ -158,16 +179,17 @@ class Environment(gym.Env):
         )
         self.prev_distance = 0
 
-    async def step(self, action):
+    @sync_wrap
+    async def step(self, action: np.ndarray):
+        action = action.tolist()
         (state, position) = await self.world.step(action)
-
-        is_terminated = self.step_count >= 5000
-
         dst = distance.euclidean(position, np.zeros(3))
         reward = dst - self.prev_distance
         self.prev_distance = dst
 
         self.step_count += 1
+
+        is_terminated = (self.step_count % 500) == 0
 
         return (
             state,
@@ -177,6 +199,7 @@ class Environment(gym.Env):
             {},
         )
 
+    @sync_wrap
     async def reset(self, seed=1337):
         await self.world.restart()
         return np.zeros(OBSERVATION_SIZE), {}
