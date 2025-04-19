@@ -8,7 +8,7 @@ from scipy.spatial import distance
 from functools import wraps
 from centrifuge import Client, SubscriptionEventHandler, PublicationContext
 
-TIMESTEP_MS = 1000
+TIMESTEP_MS = 300
 ROBOT_COUNT = 1
 SPAWN_RADIUS = 0.9
 
