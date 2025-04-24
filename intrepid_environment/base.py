@@ -33,8 +33,6 @@ class WorldControllerBase:
         self._last_tick_received = -1
         self._user_task = None
 
-        print("i'm here")
-
         fut = asyncio.ensure_future(client.connect())
         fut.add_done_callback(lambda _: asyncio.ensure_future(self.on_start()))
 
