@@ -37,9 +37,9 @@ class URDFRobotController:
         await world.rpc(cmd, None)
         self.entity = None
 
-    async def state_urdf(self, world):
+    async def urdf_state(self, world):
         state = await world.rpc(
-            "object_{object}.state_urdf".format(object=self.entity),
+            "object_{object}.urdf_state".format(object=self.entity),
             None,
         )
         return np.array(state["state"])
@@ -83,15 +83,13 @@ class WorldController(WorldControllerBase):
             self.session_step(),
         ]
         position = await self.robot.position(self)
-        state = await self.robot.state_urdf(self)
+        state = await self.robot.urdf_state(self)
 
         await asyncio.gather(*commands)
 
         return (state, position)
 
     async def restart(self):
-        # nothing until fixed
-        return
 
         commands = [
             self.robot.despawn(self),

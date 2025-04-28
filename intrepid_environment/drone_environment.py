@@ -4,7 +4,7 @@ import numpy as np
 from .base import WorldControllerBase, sync_wrap
 
 
-class DroneController:
+class DroneComputer:
 
     def __init__(self, robot_id):
         self.robot_id = robot_id
@@ -19,6 +19,11 @@ class DroneController:
                 'z': 0,
             },
         })
+
+    async def despawn(self, world):
+        cmd = "object_{object}.despawn".format(object=self.entity)
+        await world.rpc(cmd, None)
+        self.entity = None
 
     async def position(self, world):
         state = await world.rpc(
@@ -60,18 +65,18 @@ class DroneController:
         await world.rpc(cmd, args)
 
 
-class WorldController(WorldControllerBase):
+class DroneController(WorldControllerBase):
 
     def __init__(self):
 
-        super(WorldController, self).__init__()
+        super(DroneController, self).__init__()
 
         self.drone_id = 1
         self.drone_entity = None
 
     async def on_start(self):
         await self.session_restart()
-        self.robot = DroneController(self.drone_id)
+        self.robot = DroneComputer(self.drone_id)
 
         commands = [
             self.robot.spawn(self),
@@ -88,33 +93,39 @@ class WorldController(WorldControllerBase):
     async def session_restart(self):
         return await self.rpc("session.restart", None)
 
-
-class Controller:
-
-    def __init__(self):
-        self.world = WorldController()
+    # Drone controller methods
 
     @sync_wrap
     async def rotation_angles(self):
-        result = await self.world.robot.rotation_angles(self.world)
+        result = await self.robot.rotation_angles(self)
         return result
 
     @sync_wrap
     async def acceleration(self):
-        result = await self.world.robot.acceleration(self.world)
+        result = await self.robot.acceleration(self)
         return result
 
     @sync_wrap
     async def linear_velocity(self):
-        result = await self.world.robot.linear_velocity(self.world)
+        result = await self.robot.linear_velocity(self)
         return result
 
     @sync_wrap
     async def angular_velocity(self):
-        result = await self.world.robot.angular_velocity(self.world)
+        result = await self.robot.angular_velocity(self)
         return result
 
     @sync_wrap
     async def control_motors(self, m1, m2, m3, m4):
-        result = await self.world.robot.actuator_control(self.world, [m1, m2, m3, m4])
+        result = await self.robot.actuator_control(self, [m1, m2, m3, m4])
         return result
+
+    # Convenience methods
+
+    @sync_wrap
+    async def restart(self):
+        commands = [
+            self.robot.despawn(self),
+            self.robot.spawn(self),
+        ]
+        await asyncio.gather(*commands)
