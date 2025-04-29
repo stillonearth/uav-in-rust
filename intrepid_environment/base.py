@@ -17,7 +17,7 @@ def sync_wrap(func):
 
 
 class WorldControllerBase:
-    def __init__(self):
+    def __init__(self, dt_ms=3000):
         client = Client("ws://localhost:9120/connection/websocket")
 
         class EventHandler(SubscriptionEventHandler):
@@ -29,7 +29,7 @@ class WorldControllerBase:
         asyncio.ensure_future(sync.subscribe())
 
         self.client = client
-        self._dt_ms = TIMESTEP_MS
+        self._dt_ms = dt_ms
         self._last_tick_received = -1
         self._user_task = None
 
@@ -67,3 +67,15 @@ class WorldControllerBase:
 
         self._user_task = asyncio.ensure_future(self.on_tick(tick))
         self._user_task.add_done_callback(on_task_done)
+
+        # Session api calls
+
+    async def simulation_step(self):
+        return await self.rpc("session.step", None)
+
+    async def simulation_restart(self):
+        return await self.rpc("session.restart", None)
+
+    async def simulation_time(self):
+        state = await self.rpc("session.state", None)
+        return state['time_us']

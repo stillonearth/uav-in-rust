@@ -1,4 +1,3 @@
-import asyncio
 import numpy as np
 
 from .base import WorldControllerBase, sync_wrap
@@ -67,31 +66,18 @@ class DroneComputer:
 
 class DroneController(WorldControllerBase):
 
-    def __init__(self):
+    def __init__(self, dt_ms):
 
-        super(DroneController, self).__init__()
+        super(DroneController, self).__init__(dt_ms=dt_ms)
 
         self.drone_id = 1
         self.drone_entity = None
 
     async def on_start(self):
-        await self.session_restart()
+
+        await self.simulation_restart()
         self.robot = DroneComputer(self.drone_id)
-
-        commands = [
-            self.robot.spawn(self),
-            self.session_step(),
-        ]
-
-        await asyncio.gather(*commands)
-
-    # session rpc calls
-
-    async def session_step(self):
-        return await self.rpc("session.step", None)
-
-    async def session_restart(self):
-        return await self.rpc("session.restart", None)
+        await self.robot.spawn(self)
 
     # Drone controller methods
 
@@ -124,8 +110,5 @@ class DroneController(WorldControllerBase):
 
     @sync_wrap
     async def restart(self):
-        commands = [
-            self.robot.despawn(self),
-            self.robot.spawn(self),
-        ]
-        await asyncio.gather(*commands)
+        await self.robot.despawn(self)
+        await self.robot.spawn(self)
