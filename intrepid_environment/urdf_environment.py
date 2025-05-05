@@ -42,7 +42,7 @@ class URDFRobotController:
             "object_{object}.urdf_state".format(object=self.entity),
             None,
         )
-        return np.array(state["state"])
+        return np.array(state)
 
     async def position(self, world):
 
@@ -67,6 +67,7 @@ class WorldController(WorldControllerBase):
         self.robot_entity = None
 
     async def on_start(self):
+
         await self.session_restart()
         self.robot = URDFRobotController(self.robot_id)
 
