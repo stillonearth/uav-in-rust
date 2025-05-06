@@ -3,7 +3,7 @@ import numpy as np
 from .base import WorldControllerBase, sync_wrap
 
 
-class DroneComputer:
+class Quadcopter:
 
     def __init__(self, robot_id):
         self.robot_id = robot_id
@@ -38,6 +38,13 @@ class DroneComputer:
         )
         return np.array([rotation_angles["yz"], rotation_angles["zx"], rotation_angles["xy"]])
 
+    async def position(self, world):
+        rotation_angles = await world.rpc(
+            "object_{object}.position".format(object=self.entity),
+            None,
+        )
+        return np.array([rotation_angles["x"], rotation_angles["y"], rotation_angles["z"]])
+
     async def linear_velocity(self, world):
         linear_velocity = await world.rpc(
             "object_{object}.linear_velocity".format(object=self.entity),
@@ -64,11 +71,11 @@ class DroneComputer:
         await world.rpc(cmd, args)
 
 
-class DroneController(WorldControllerBase):
+class QuadcopterController(WorldControllerBase):
 
     def __init__(self, dt_ms):
 
-        super(DroneController, self).__init__(dt_ms=dt_ms)
+        super(QuadcopterController, self).__init__(dt_ms=dt_ms)
 
         self.drone_id = 1
         self.drone_entity = None
@@ -76,10 +83,15 @@ class DroneController(WorldControllerBase):
     async def on_start(self):
 
         await self.simulation_restart()
-        self.robot = DroneComputer(self.drone_id)
+        self.robot = Quadcopter(self.drone_id)
         await self.robot.spawn(self)
 
     # Drone controller methods
+
+    @sync_wrap
+    async def position(self):
+        result = await self.robot.position(self)
+        return result
 
     @sync_wrap
     async def rotation_angles(self):
@@ -112,3 +124,7 @@ class DroneController(WorldControllerBase):
     async def restart(self):
         await self.robot.despawn(self)
         await self.robot.spawn(self)
+
+    @sync_wrap
+    async def step(self):
+        await self.simulation_step()
