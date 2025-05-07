@@ -31,16 +31,11 @@ class QuadcopterController:
 
         # controller errors
         self.integrated_altitude_error = 0.0
-
-        # estimated state
-        # self.est_att = np.quaternion(1, 0, 0, 0)
-        # self.est_omega = np.zeros(3)  # the same thing
-        # self.est_pos = np.zeros(3)
-        # self.est_vel = np.zeros(3)
-
         self.set_gains()
 
-    def set_gains(self, kp_pqr=0.0, kp_bank=0.0, kp_pos_z=0.0, kp_vel_z=0.0, ki_pos_z=0.0, kp_pos_xy=0.0, kp_yaw=0.0, kp_vel_xy=0.0):
+    def set_gains(self, kp_pqr=0.0, kp_bank=0.0, kp_pos_z=0.0, kp_vel_z=0.0,
+                  ki_pos_z=0.0, kp_pos_xy=0.0, kp_yaw=0.0, kp_vel_xy=0.0,
+                  kappa=1.0):
         self.kp_pqr = kp_pqr
         self.kp_bank = kp_bank
         self.kp_pos_z = kp_pos_z
@@ -49,6 +44,7 @@ class QuadcopterController:
         self.kp_pos_xy = kp_pos_xy
         self.kp_yaw = kp_yaw
         self.kp_vel_xy = kp_vel_xy
+        self.kappa = kappa
 
     def body_rate_control(self, pqr_cmd, pqr):
         """
@@ -94,15 +90,26 @@ class QuadcopterController:
         d_term = self.kp_vel_z * vel_z_err
         i_term = self.ki_pos_z * self.integrated_altitude_error
 
+        print("p", p_term)
+        print("d", d_term)
+        print("i", i_term)
+
         u1_bar = p_term + i_term + d_term + accel_z_cmd
 
         acc = (u1_bar - 9.81) / b_z
+        print("acc", acc)
+
         clipped_acc = np.clip(
             acc,
-            -self.max_ascent_rate /
-            dt, self.max_ascent_rate / dt
+            -self.max_ascent_rate / dt,
+            +self.max_ascent_rate / dt
         )
-        thrust = -self.mass * clipped_acc
+
+        print("clipped_acc", clipped_acc)
+
+        thrust = self.mass * clipped_acc
+
+        print("thrust", thrust)
 
         return thrust
 
@@ -117,7 +124,7 @@ class QuadcopterController:
             attitude: current or estimated attitude of the vehicle
             coll_thrust_cmd: desired collective thrust of the quad [N]
 
-        Returns:`
+        Returns:
             A 3x1 numpy array containing the desired pitch and roll rates. The Z
                     element of the V3F should be left at its default value (0)
         """
@@ -248,6 +255,13 @@ class QuadcopterController:
             t_att,
         ) = traj_pt.position, traj_pt.velocity, traj_pt.accel, traj_pt.attitude
 
+        print("-------------------")
+        print("altitude controller")
+        print("-------------------")
+
+        print("trajectory point: ", t_pos)
+        print("actual position: ", est_pos)
+
         thrust = self.altitude_control(
             t_pos[2],
             t_vel[2],
@@ -257,6 +271,8 @@ class QuadcopterController:
             t_acc[2],
             self.dt
         )
+
+        print("collective thrust", thrust)
 
         # thrust_margin = 0.1 * (max_motor_thrust - min_motor_thrust)
         # coll_thrust_cmd = constrain(
@@ -298,8 +314,6 @@ def calculate_drone_moment_of_inertia(drone_height, drone_radius, drone_mass):
     - drone_height: height of the central cylinder (m)
     - drone_radius: radius of the central cylinder (m)
     - drone_mass: mass of the central cylinder (kg)
-    - rotor_mass: mass of each rotor (kg), default 0
-    - num_rotors: number of rotors, default 4
 
     Returns:
     - Dictionary with moments of inertia about x, y, and z axes (kg·m²)
