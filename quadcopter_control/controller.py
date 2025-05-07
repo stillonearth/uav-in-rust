@@ -90,14 +90,9 @@ class QuadcopterController:
         d_term = self.kp_vel_z * vel_z_err
         i_term = self.ki_pos_z * self.integrated_altitude_error
 
-        print("p", p_term)
-        print("d", d_term)
-        print("i", i_term)
-
         u1_bar = p_term + i_term + d_term + accel_z_cmd
 
         acc = (u1_bar - 9.81) / b_z
-        print("acc", acc)
 
         clipped_acc = np.clip(
             acc,
@@ -105,11 +100,7 @@ class QuadcopterController:
             +self.max_ascent_rate / dt
         )
 
-        print("clipped_acc", clipped_acc)
-
         thrust = self.mass * clipped_acc
-
-        print("thrust", thrust)
 
         return thrust
 
