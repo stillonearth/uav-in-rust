@@ -27,7 +27,7 @@ class QuadcopterController:
 
         self.kappa = 1.0  # velociy/thrust ratio
         self.max_motor_thrust = 100.0
-        self.min_motor_thrust = 0.0
+        self.min_motor_thrust = 50.0
 
         # controller errors
         self.integrated_altitude_error = 0.0
@@ -84,10 +84,6 @@ class QuadcopterController:
         vel_z_err = vel_z_cmd - vel_z
         self.integrated_altitude_error += pos_z_err * dt
 
-        print("pos_z_err", pos_z_err)
-        print("vel_z_err", vel_z_err)
-        print("self.integrated_altitude_error", self.integrated_altitude_error)
-
         b_z = R[2, 2]
 
         p_term = self.kp_pos_z * pos_z_err
@@ -96,23 +92,16 @@ class QuadcopterController:
 
         u1_bar = p_term + i_term + d_term + accel_z_cmd
 
-        print("u1_bar", u1_bar)
+        dt = np.max([dt, 0.01])
 
         acc = (u1_bar - 9.81) / b_z
-
-        print("acc", acc)
-
         clipped_acc = np.clip(
             acc,
             -self.max_ascent_rate / dt,
             +self.max_ascent_rate / dt
         )
 
-        print("clipped_acc", clipped_acc)
-
-        thrust = self.mass * clipped_acc
-
-        return thrust
+        return self.mass * clipped_acc
 
     def roll_pitch_yaw_control(self, accel_cmd, attitude, coll_thrust_cmd):
         """
@@ -256,13 +245,6 @@ class QuadcopterController:
             t_att,
         ) = traj_pt.position, traj_pt.velocity, traj_pt.accel, traj_pt.attitude
 
-        print("-------------------")
-        print("altitude controller")
-        print("-------------------")
-
-        print("trajectory point: ", t_pos)
-        print("actual position: ", est_pos)
-
         thrust = self.altitude_control(
             t_pos[2],
             t_vel[2],
@@ -272,8 +254,6 @@ class QuadcopterController:
             t_acc[2],
             self.dt
         )
-
-        print("collective thrust", thrust)
 
         # thrust_margin = 0.1 * (max_motor_thrust - min_motor_thrust)
         # coll_thrust_cmd = constrain(
