@@ -36,6 +36,20 @@ class WorldControllerBase:
         fut = asyncio.ensure_future(client.connect())
         fut.add_done_callback(lambda _: asyncio.ensure_future(self.on_start()))
 
+    async def connect(self):
+        class EventHandler(SubscriptionEventHandler):
+            async def on_publication(_, ctx: PublicationContext) -> None:
+                if self.next_step:
+                    self.next_step.set_result(ctx.pub.data)
+                    self.next_step = None
+                self.last_tick = ctx.pub.data
+
+        next_step = self.next_step = asyncio.Future()
+        sync = self.client.new_subscription("sync", EventHandler())
+        await sync.subscribe()
+        await self.client.connect()
+        return await next_step
+
     async def on_start(self):
         # implemented by the user
         pass

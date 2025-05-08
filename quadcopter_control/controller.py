@@ -92,9 +92,8 @@ class QuadcopterController:
 
         u1_bar = p_term + i_term + d_term + accel_z_cmd
 
-        dt = np.max([dt, 0.01])
-
         acc = (u1_bar - 9.81) / b_z
+
         clipped_acc = np.clip(
             acc,
             -self.max_ascent_rate / dt,

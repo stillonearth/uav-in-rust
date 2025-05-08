@@ -13,7 +13,7 @@ class TrajectoryPoint:
     position: np.ndarray  # [x, y, z]
     velocity: np.ndarray  # [vx, vy, vz]
     omega: np.ndarray     # [ωx, ωy, ωz]
-    accel: np.ndarray     # [ax, ay, az]
+    acceleration: np.ndarray     # [ax, ay, az]
     attitude: np.quaternion
 
 
