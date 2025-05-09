@@ -242,7 +242,7 @@ class QuadcopterController:
             t_vel,
             t_acc,
             t_att,
-        ) = traj_pt.position, traj_pt.velocity, traj_pt.accel, traj_pt.attitude
+        ) = traj_pt.position, traj_pt.velocity, traj_pt.acceleration, traj_pt.attitude
 
         thrust = self.altitude_control(
             t_pos[2],
@@ -264,10 +264,10 @@ class QuadcopterController:
 
         des_acc = self.lateral_position_control(
             t_pos,
-            t_vel,
-            est_pos,
+            np.copy(t_vel),
+            np.copy(est_pos),
             est_vel,
-            t_acc
+            np.copy(t_acc)
         )
 
         traj_euler_angles = quaternion.as_euler_angles(t_att)
