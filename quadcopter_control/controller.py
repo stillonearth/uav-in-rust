@@ -26,8 +26,8 @@ class QuadcopterController:
         self.Izz = Izz
 
         self.kappa = 1.0  # velociy/thrust ratio
-        self.max_motor_thrust = 100.0
-        self.min_motor_thrust = 50.0
+        self.max_motor_thrust = 0.1
+        self.min_motor_thrust = 1.0
 
         # controller errors
         self.integrated_altitude_error = 0.0
@@ -249,24 +249,23 @@ class QuadcopterController:
             t_vel[2],
             est_pos[2],
             est_vel[2],
-            est_att,
+            np.copy(est_att),
             t_acc[2],
             self.dt
         )
 
-        # thrust_margin = 0.1 * (max_motor_thrust - min_motor_thrust)
-        # coll_thrust_cmd = constrain(
-        #     coll_thrust_cmd,
-        #     (min_motor_thrust - thrust_margin) * 4.0,
-        #     (max_motor_thrust + thrust_margin) * 4.0
+        # thrust_margin = 0.1 * (self.max_motor_thrust - self.min_motor_thrust)
+        # thrust = np.clip(
+        #     thrust,
+        #     (self.min_motor_thrust - thrust_margin) * 4.0,
+        #     (self.max_motor_thrust + thrust_margin) * 4.0
         # )
-        # print("coll thrust", coll_thrust_cmd)
 
         des_acc = self.lateral_position_control(
-            t_pos,
+            np.copy(t_pos),
             np.copy(t_vel),
             np.copy(est_pos),
-            est_vel,
+            np.copy(est_vel),
             np.copy(t_acc)
         )
 
@@ -276,7 +275,6 @@ class QuadcopterController:
 
         des_omega = self.roll_pitch_yaw_control(des_acc, est_att, thrust)
         des_omega[2] = self.yaw_control(traj_yaw, est_yaw)
-
         des_moment = self.body_rate_control(des_omega, est_omega)
 
         return self.generate_motor_commands(thrust, des_moment)
