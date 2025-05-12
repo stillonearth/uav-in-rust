@@ -199,9 +199,6 @@ class QuadcopterController:
           a desired yaw rate [rad/s]
         """
 
-        # TODO: check correctness
-        # TODO: test
-
         yaw_rate_cmd = self.kp_yaw * (yaw_cmd - yaw)
         return yaw_rate_cmd
 
