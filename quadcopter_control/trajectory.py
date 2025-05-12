@@ -4,16 +4,16 @@ import quaternion
 from dataclasses import dataclass
 from collections import deque
 
-MAX_TRAJECTORY_POINTS = 1000
+MAX_TRAJECTORY_POINTS = 5000
 
 
 @dataclass
 class TrajectoryPoint:
     time: float
-    position: np.ndarray  # [x, y, z]
-    velocity: np.ndarray  # [vx, vy, vz]
-    omega: np.ndarray     # [ωx, ωy, ωz]
-    acceleration: np.ndarray     # [ax, ay, az]
+    position: np.ndarray     # [x, y, z]
+    velocity: np.ndarray     # [vx, vy, vz]
+    omega: np.ndarray        # [ωx, ωy, ωz]
+    acceleration: np.ndarray  # [ax, ay, az]
     attitude: np.quaternion
 
 
