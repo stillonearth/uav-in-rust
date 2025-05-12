@@ -12,7 +12,7 @@ class QuadcopterController:
     coordinate system: bevy: right-handed, y-top
     """
 
-    def __init__(self, dt, mass, Ixx, Iyy, Izz, max_tilt_angle, max_ascent_rate):
+    def __init__(self, dt, mass, Ixx, Iyy, Izz, max_tilt_angle, max_ascent_rate, l=np.sqrt(2)):
 
         self.dt = dt
 
@@ -28,6 +28,8 @@ class QuadcopterController:
         self.kappa = 1.0  # velociy/thrust ratio
         self.max_motor_thrust = 0.1
         self.min_motor_thrust = 1.0
+
+        self.l = l
 
         # controller errors
         self.integrated_altitude_error = 0.0
@@ -218,7 +220,7 @@ class QuadcopterController:
         # TODO: check correctness
         # TODO: check
 
-        l = np.sqrt(2.0)
+        l = self.l
 
         t1 = moment_cmd[0] / l
         t2 = moment_cmd[1] / l
