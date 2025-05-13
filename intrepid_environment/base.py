@@ -72,7 +72,6 @@ class WorldControllerBase:
         next_tick = tick + self._dt_ms * 1_000
         sync = self.client.get_subscription("sync")
         asyncio.ensure_future(sync.publish(next_tick))
-        # print(f"send sync {next_tick}")
 
         def on_task_done(_):
             self._user_task = None
