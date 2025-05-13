@@ -26,8 +26,8 @@ class QuadcopterController:
         self.Izz = Izz
 
         self.kappa = 1.0  # velociy/thrust ratio
-        self.max_motor_thrust = 0.1
-        self.min_motor_thrust = 1.0
+        self.max_motor_thrust = 2.0
+        self.min_motor_thrust = 0.1
         self.l = l
 
         # controller errors
@@ -182,6 +182,8 @@ class QuadcopterController:
         pos_err = pos_cmd - pos
         vel_err = vel_cmd - vel
 
+        print(pos_err)
+
         accel = self.kp_pos_xy * pos_err + self.kp_vel_xy * vel_err + accel_cmd_ff
         accel_cmd[0] = accel[0]
         accel_cmd[1] = accel[1]
@@ -252,14 +254,12 @@ class QuadcopterController:
             self.dt
         )
 
-        return self.generate_motor_commands(thrust, np.zeros(3))
-
-        # thrust_margin = 0.1 * (self.max_motor_thrust - self.min_motor_thrust)
-        # thrust = np.clip(
-        #     thrust,
-        #     (self.min_motor_thrust - thrust_margin) * 4.0,
-        #     (self.max_motor_thrust + thrust_margin) * 4.0
-        # )
+        thrust_margin = 0.1 * (self.max_motor_thrust - self.min_motor_thrust)
+        thrust = np.clip(
+            thrust,
+            (self.min_motor_thrust + thrust_margin) * 4.0,
+            (self.max_motor_thrust - thrust_margin) * 4.0
+        )
 
         des_acc = self.lateral_position_control(
             np.copy(t_pos),
@@ -269,6 +269,12 @@ class QuadcopterController:
             np.copy(t_acc)
         )
 
+        des_acc = np.clip(
+            des_acc,
+            -self.max_ascent_rate / self.dt,
+            +self.max_ascent_rate / self.dt
+        )
+
         traj_euler_angles = quaternion.as_euler_angles(t_att)
         traj_yaw = traj_euler_angles[0]
         est_yaw = quaternion.as_euler_angles(est_att)[0]
@@ -276,6 +282,8 @@ class QuadcopterController:
         des_omega = self.roll_pitch_yaw_control(des_acc, est_att, thrust)
         des_omega[2] = self.yaw_control(traj_yaw, est_yaw)
         des_moment = self.body_rate_control(des_omega, est_omega)
+
+        # print(des_moment)
 
         return self.generate_motor_commands(thrust, des_moment)
 
