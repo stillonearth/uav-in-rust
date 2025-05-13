@@ -252,6 +252,8 @@ class QuadcopterController:
             self.dt
         )
 
+        return self.generate_motor_commands(thrust, np.zeros(3))
+
         # thrust_margin = 0.1 * (self.max_motor_thrust - self.min_motor_thrust)
         # thrust = np.clip(
         #     thrust,
