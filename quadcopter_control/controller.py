@@ -28,7 +28,6 @@ class QuadcopterController:
         self.kappa = 1.0  # velociy/thrust ratio
         self.max_motor_thrust = 0.1
         self.min_motor_thrust = 1.0
-
         self.l = l
 
         # controller errors
@@ -130,12 +129,12 @@ class QuadcopterController:
         bx_cmd = np.clip(
             accel_cmd[0] / coll_accel,
             -self.max_tilt_angle,
-            self.max_tilt_angle
+            +self.max_tilt_angle
         )
         by_cmd = np.clip(
             accel_cmd[1] / coll_accel,
             -self.max_tilt_angle,
-            self.max_tilt_angle
+            +self.max_tilt_angle
         )
 
         bx_err = bx_cmd - R[0, 2]
@@ -220,7 +219,7 @@ class QuadcopterController:
         # TODO: check correctness
         # TODO: check
 
-        l = self.l
+        l = self.l / np.sqrt(2.0)
 
         t1 = moment_cmd[0] / l
         t2 = moment_cmd[1] / l
@@ -228,9 +227,9 @@ class QuadcopterController:
         t4 = coll_thrust_cmd
 
         thrust = np.array([
-            (t1 + t2 + t3 + t4) / 4.0,  # front left  - f1
+            (+t1 + t2 + t3 + t4) / 4.0,  # front left  - f1
             (-t1 + t2 - t3 + t4) / 4.0,  # front right - f2
-            (t1 - t2 - t3 + t4) / 4.0,  # rear left   - f4
+            (+t1 - t2 - t3 + t4) / 4.0,  # rear left   - f4
             (-t1 - t2 + t3 + t4) / 4.0,  # rear right  - f3
         ])
         return thrust
