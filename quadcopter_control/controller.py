@@ -59,8 +59,8 @@ class QuadcopterController:
           A 3x1 numpy array containing the desired moments for each of the 3 axes.
         """
 
-        I = np.array([self.Ixx, self.Iyy, self.Izz])
-        moment_cmd = I * self.kp_pqr * (pqr_cmd - pqr)
+        I = np.diag([self.Ixx, self.Iyy, self.Izz])
+        moment_cmd = I @ self.kp_pqr * (pqr_cmd - pqr)
         return moment_cmd
 
     def altitude_control(self, pos_z_cmd, vel_z_cmd, pos_z, vel_z, attitude, accel_z_cmd, dt):
@@ -170,9 +170,6 @@ class QuadcopterController:
             the Z component should be 0
         """
 
-        # TODO: check correctness
-        # TODO: test
-
         accel_cmd_ff[2] = 0
         vel_cmd[2] = 0
         pos_cmd[2] = pos[2]
@@ -181,8 +178,6 @@ class QuadcopterController:
 
         pos_err = pos_cmd - pos
         vel_err = vel_cmd - vel
-
-        print(pos_err)
 
         accel = self.kp_pos_xy * pos_err + self.kp_vel_xy * vel_err + accel_cmd_ff
         accel_cmd[0] = accel[0]
