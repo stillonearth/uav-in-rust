@@ -1,6 +1,5 @@
 import numpy as np
-import quaternion
-
+from scipy.spatial.transform import Rotation as R
 from dataclasses import dataclass
 from collections import deque
 
@@ -14,7 +13,7 @@ class TrajectoryPoint:
     velocity: np.ndarray  # [vx, vy, vz]
     omega: np.ndarray     # [ωx, ωy, ωz]
     acceleration: np.ndarray     # [ax, ay, az]
-    attitude: np.quaternion
+    attitude: R
 
 
 class Trajectory:
@@ -38,7 +37,7 @@ class Trajectory:
 
     def next_trajectory_point(self, time) -> TrajectoryPoint:
         if not self.traj:
-            return TrajectoryPoint(0.0, np.zeros(3), np.zeros(3), np.quaternion(1, 0, 0, 0), np.zeros(3))
+            return TrajectoryPoint(0.0, np.zeros(3), np.zeros(3), R.from_quat([0, 0, 0, 1]), np.zeros(3))
 
         for i in reversed(range(len(self.traj))):
             if self.traj[i].time < time:

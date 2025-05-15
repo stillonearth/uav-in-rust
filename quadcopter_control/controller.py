@@ -1,6 +1,23 @@
 import numpy as np
-import quaternion
+from scipy.linalg import norm
+from scipy.spatial.transform import Rotation as R
 
+
+def skew(v):
+    """Create skew-symmetric matrix from 3-element vector"""
+    return np.array([[0, -v[2], v[1]],
+                    [v[2], 0, -v[0]],
+                    [-v[1], v[0], 0]])
+
+
+def rotation_matrix_i_wrt_b(q):
+    """Calculate rotation matrix from body frame to inertial frame"""
+    w = q[0]
+    qvec = q[1:]
+    Sk_q = skew(qvec)
+    return (np.eye(3) * (w**2 - np.dot(qvec, qvec)) +
+            2 * np.outer(qvec, qvec) +
+            2 * w * Sk_q)
 
 # -----------
 # Controllers
@@ -60,7 +77,8 @@ class QuadcopterController:
         """
 
         I = np.diag([self.Ixx, self.Iyy, self.Izz])
-        moment_cmd = I @ self.kp_pqr * (pqr_cmd - pqr)
+        pqr_err = (pqr_cmd - pqr)
+        moment_cmd = I @ self.kp_pqr * pqr_err
         return moment_cmd
 
     def altitude_control(self, pos_z_cmd, vel_z_cmd, pos_z, vel_z, attitude, accel_z_cmd, dt):
@@ -79,7 +97,7 @@ class QuadcopterController:
           A collective thrust command in [N]
         """
 
-        R = quaternion.as_rotation_matrix(attitude)
+        R = attitude.as_matrix()
 
         pos_z_err = pos_z_cmd - pos_z
         vel_z_err = vel_z_cmd - vel_z
@@ -103,7 +121,7 @@ class QuadcopterController:
 
         return self.mass * clipped_acc
 
-    def roll_pitch_yaw_control(self, accel_cmd, attitude, coll_thrust_cmd):
+    def roll_pitch_control(self, accel_cmd, attitude, coll_thrust_cmd):
         """
         Calculate a desired pitch and roll angle rates based on a desired global
           lateral acceleration, the current attitude of the quad, and desired
@@ -120,11 +138,11 @@ class QuadcopterController:
         """
 
         pqr_cmd = np.zeros(3)
-        R = quaternion.as_rotation_matrix(attitude)
+        R = attitude.as_matrix()
         if coll_thrust_cmd == 0:
             return pqr_cmd
 
-        coll_accel = -coll_thrust_cmd / self.mass
+        coll_accel = coll_thrust_cmd / self.mass
 
         bx_cmd = np.clip(
             accel_cmd[0] / coll_accel,
@@ -137,8 +155,8 @@ class QuadcopterController:
             +self.max_tilt_angle
         )
 
-        bx_err = bx_cmd - R[0, 2]
-        by_err = by_cmd - R[1, 2]
+        bx_err = -(bx_cmd - R[0, 2])
+        by_err = -(by_cmd - R[1, 2])
 
         bx_p_term = self.kp_bank * bx_err
         by_p_term = self.kp_bank * by_err
@@ -148,10 +166,10 @@ class QuadcopterController:
         r21 = +R[1, 1] / R[2, 2]
         r22 = -R[0, 1] / R[2, 2]
 
-        pqr_cmd[0] = r11 * bx_p_term + r12 * by_p_term
+        pqr_cmd[0] = -(r11 * bx_p_term + r12 * by_p_term)
         pqr_cmd[1] = r21 * bx_p_term + r22 * by_p_term
 
-        return pqr_cmd
+        return pqr_cmd, (bx_cmd, by_cmd, bx_err, by_err)
 
     def lateral_position_control(self, pos_cmd, vel_cmd, pos, vel, accel_cmd_ff):
         """
@@ -244,7 +262,7 @@ class QuadcopterController:
             t_vel[2],
             est_pos[2],
             est_vel[2],
-            np.copy(est_att),
+            est_att,
             t_acc[2],
             self.dt
         )
@@ -270,17 +288,22 @@ class QuadcopterController:
             +self.max_ascent_rate / self.dt
         )
 
-        traj_euler_angles = quaternion.as_euler_angles(t_att)
-        traj_yaw = traj_euler_angles[0]
-        est_yaw = quaternion.as_euler_angles(est_att)[0]
+        traj_euler_angles = t_att.as_euler('xyz', degrees=False)
+        traj_yaw = traj_euler_angles[2]
+        est_yaw = est_att.as_euler('xyz', degrees=False)[2]
 
-        des_omega = self.roll_pitch_yaw_control(des_acc, est_att, thrust)
+        des_omega, (bx_cmd, by_cmd, bx_err, by_err) = self.roll_pitch_control(
+            des_acc, est_att, thrust)
         des_omega[2] = self.yaw_control(traj_yaw, est_yaw)
+
+        # print("des_omega", des_omega)
+
         des_moment = self.body_rate_control(des_omega, est_omega)
 
-        # print(des_moment)
-
-        return self.generate_motor_commands(thrust, des_moment)
+        return (
+            self.generate_motor_commands(thrust, des_moment),
+            (bx_cmd, by_cmd, bx_err, by_err, des_acc),
+        )
 
 # ----
 # Util
