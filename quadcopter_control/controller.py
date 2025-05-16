@@ -29,7 +29,7 @@ class QuadcopterController:
     coordinate system: bevy: right-handed, y-top
     """
 
-    def __init__(self, dt, mass, Ixx, Iyy, Izz, max_tilt_angle, max_ascent_rate, l=np.sqrt(2)):
+    def __init__(self, dt, mass, Ixx, Iyy, Izz, max_tilt_angle, max_accel_xy, max_vel_xy, max_ascent_rate, l=np.sqrt(2)):
 
         self.dt = dt
 
@@ -43,8 +43,10 @@ class QuadcopterController:
         self.Izz = Izz
 
         self.kappa = 1.0  # velociy/thrust ratio
-        self.max_motor_thrust = 2.0
+        self.max_motor_thrust = 4.5
         self.min_motor_thrust = 0.1
+        self.max_accel_xy = max_accel_xy
+        self.max_vel_xy = max_vel_xy
         self.l = l
 
         # controller errors
@@ -121,7 +123,7 @@ class QuadcopterController:
 
         return self.mass * clipped_acc
 
-    def roll_pitch_control(self, accel_cmd, attitude, coll_thrust_cmd):
+    def roll_pitch_control(self, accel_cmd, attitude, thrust):
         """
         Calculate a desired pitch and roll angle rates based on a desired global
           lateral acceleration, the current attitude of the quad, and desired
@@ -139,10 +141,10 @@ class QuadcopterController:
 
         pqr_cmd = np.zeros(3)
         R = attitude.as_matrix()
-        if coll_thrust_cmd == 0:
+        if thrust == 0:
             return pqr_cmd
 
-        coll_accel = coll_thrust_cmd / self.mass
+        coll_accel = thrust / self.mass
 
         bx_cmd = np.clip(
             accel_cmd[0] / coll_accel,
@@ -155,19 +157,39 @@ class QuadcopterController:
             +self.max_tilt_angle
         )
 
-        bx_err = -(bx_cmd - R[0, 2])
-        by_err = -(by_cmd - R[1, 2])
+        proj_z_x = +R[0, 2]  # pitch
+        proj_z_y = -R[1, 2]  # roll
+        proj_x_y = -R[1, 0]
+        proj_y_x = -R[0, 1]
+
+        proj_x_x = R[0, 0]
+        proj_y_y = R[1, 1]
+        proj_z_z = R[2, 2]
+
+        # bx_err = (bx_cmd - R[0, 2])
+        # by_err = (by_cmd + R[1, 2])
+
+        # bx_err = (bx_cmd - R[1, 2])
+        # by_err = (by_cmd - R[0, 2])
+
+        by_err = (bx_cmd - proj_z_y)  # roll
+        bx_err = (by_cmd - proj_z_x)  # pitch
 
         bx_p_term = self.kp_bank * bx_err
         by_p_term = self.kp_bank * by_err
 
-        r11 = +R[1, 0] / R[2, 2]
-        r12 = -R[0, 0] / R[2, 2]
-        r21 = +R[1, 1] / R[2, 2]
-        r22 = -R[0, 1] / R[2, 2]
+        # r11 = +R[1, 0] / R[2, 2]
+        # r12 = -R[0, 0] / R[2, 2]
+        # r21 = +R[1, 1] / R[2, 2]
+        # r22 = -R[0, 1] / R[2, 2]
 
-        pqr_cmd[0] = -(r11 * bx_p_term + r12 * by_p_term)
-        pqr_cmd[1] = r21 * bx_p_term + r22 * by_p_term
+        r11 = proj_x_y / proj_z_z
+        r12 = -proj_x_x / proj_z_z
+        r21 = proj_y_y / proj_z_z
+        r22 = -proj_y_x / proj_z_z
+
+        pqr_cmd[1] = r11 * bx_p_term + r12 * by_p_term
+        pqr_cmd[0] = -(r21 * bx_p_term + r22 * by_p_term)
 
         return pqr_cmd, (bx_cmd, by_cmd, bx_err, by_err)
 
@@ -200,6 +222,8 @@ class QuadcopterController:
         accel = self.kp_pos_xy * pos_err + self.kp_vel_xy * vel_err + accel_cmd_ff
         accel_cmd[0] = accel[0]
         accel_cmd[1] = accel[1]
+
+        accel_cmd = np.clip(accel_cmd, -self.max_accel_xy, self.max_accel_xy)
 
         return accel_cmd
 
@@ -284,16 +308,16 @@ class QuadcopterController:
 
         des_acc = np.clip(
             des_acc,
-            -self.max_ascent_rate / self.dt,
-            +self.max_ascent_rate / self.dt
+            -self.max_accel_xy,
+            +self.max_accel_xy,
         )
-
-        traj_euler_angles = t_att.as_euler('xyz', degrees=False)
-        traj_yaw = traj_euler_angles[2]
-        est_yaw = est_att.as_euler('xyz', degrees=False)[2]
 
         des_omega, (bx_cmd, by_cmd, bx_err, by_err) = self.roll_pitch_control(
             des_acc, est_att, thrust)
+
+        traj_euler_angles = t_att.as_euler('yxz', degrees=False)
+        traj_yaw = traj_euler_angles[2]
+        est_yaw = est_att.as_euler('yxz', degrees=False)[2]
         des_omega[2] = self.yaw_control(traj_yaw, est_yaw)
 
         # print("des_omega", des_omega)
@@ -302,7 +326,7 @@ class QuadcopterController:
 
         return (
             self.generate_motor_commands(thrust, des_moment),
-            (bx_cmd, by_cmd, bx_err, by_err, des_acc),
+            (bx_cmd, by_cmd, bx_err, by_err, des_acc, des_omega),
         )
 
 # ----
