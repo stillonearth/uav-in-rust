@@ -3,22 +3,6 @@ from scipy.linalg import norm
 from scipy.spatial.transform import Rotation as R
 
 
-def skew(v):
-    """Create skew-symmetric matrix from 3-element vector"""
-    return np.array([[0, -v[2], v[1]],
-                    [v[2], 0, -v[0]],
-                    [-v[1], v[0], 0]])
-
-
-def rotation_matrix_i_wrt_b(q):
-    """Calculate rotation matrix from body frame to inertial frame"""
-    w = q[0]
-    qvec = q[1:]
-    Sk_q = skew(qvec)
-    return (np.eye(3) * (w**2 - np.dot(qvec, qvec)) +
-            2 * np.outer(qvec, qvec) +
-            2 * w * Sk_q)
-
 # -----------
 # Controllers
 # -----------
@@ -43,7 +27,7 @@ class QuadcopterController:
         self.Izz = Izz
 
         self.kappa = 1.0  # velociy/thrust ratio
-        self.max_motor_thrust = 4.5
+        self.max_motor_thrust = 2.5
         self.min_motor_thrust = 0.1
         self.max_accel_xy = max_accel_xy
         self.max_vel_xy = max_vel_xy
@@ -80,8 +64,27 @@ class QuadcopterController:
 
         I = np.diag([self.Ixx, self.Iyy, self.Izz])
         pqr_err = (pqr_cmd - pqr)
-        moment_cmd = I @ self.kp_pqr * pqr_err
+        moment_cmd = I @ (self.kp_pqr * pqr_err)
         return moment_cmd
+
+    def body_rate_control_2(self, pqr_cmd, pqr):
+        Kp_p, Kp_q, Kp_r = self.kp_pqr[0], self.kp_pqr[1], self.kp_pqr[2]
+
+        # Extract commanded angular rates
+        p_c, q_c, r_c = pqr_cmd[0], pqr_cmd[1], pqr_cmd[2]
+
+        # Extract actual angular rates
+        p_a, q_a, r_a = pqr[0], pqr[1], pqr[2]
+
+        # Calculate moment commands for each axis
+        moment_x = self.Ixx * Kp_p * \
+            (p_c - p_a) + (self.Izz - self.Iyy) * r_a * q_a
+        moment_y = self.Iyy * Kp_q * \
+            (q_c - q_a) + (self.Ixx - self.Izz) * p_a * r_a
+        moment_z = self.Izz * Kp_r * \
+            (r_c - r_a) + (self.Iyy - self.Ixx) * q_a * p_a
+
+        return np.array([moment_x, moment_y, moment_z])
 
     def altitude_control(self, pos_z_cmd, vel_z_cmd, pos_z, vel_z, attitude, accel_z_cmd, dt):
         """
@@ -115,13 +118,44 @@ class QuadcopterController:
 
         acc = (u1_bar - 9.81) / b_z
 
-        clipped_acc = np.clip(
-            acc,
-            -self.max_ascent_rate / dt,
-            +self.max_ascent_rate / dt
-        )
+        # clipped_acc = np.clip(
+        #     acc,
+        #     -self.max_ascent_rate / dt,
+        #     +self.max_ascent_rate / dt
+        # )
 
-        return self.mass * clipped_acc
+        return self.mass * acc
+
+    def roll_pitch_control_2(self, accel_cmd, attitude, thrust):
+        R = attitude.as_matrix()
+        pqr_cmd = np.zeros(3)  # [x, y, z] components
+
+        # Extract rotation matrix elements using numpy indexing
+        R11_a, R12_a, R13_a = R[0, 0], R[0, 1], R[0, 2]
+        R21_a, R22_a, R23_a = R[1, 0], R[1, 1], R[1, 2]
+        _, _, R33_a = R[2, 0], R[2, 1], R[2, 2]  # Only need R33 from last row
+
+        if thrust == 0:
+            return pqr_cmd
+        thrust_inv = 1.0 / thrust
+        R13_c = -self.mass * accel_cmd[0] * thrust_inv
+        R23_c = -self.mass * accel_cmd[1] * thrust_inv
+
+        # Apply tilt constraints using numpy clip
+        R13_c = np.clip(R13_c, -self.max_tilt_angle, self.max_tilt_angle)
+        R23_c = np.clip(R23_c, -self.max_tilt_angle, self.max_tilt_angle)
+
+        # Calculate error derivatives
+        R13_c_dot = self.kp_bank * (R13_c - R13_a)
+        R23_c_dot = self.kp_bank * (R23_c - R23_a)
+
+        # Compute angular rate commands with safe division
+        if R33_a != 0:
+            inv_R33 = 1.0 / R33_a
+            pqr_cmd[0] = (R21_a * R13_c_dot - R11_a * R23_c_dot) * inv_R33
+            pqr_cmd[1] = -(R22_a * R13_c_dot - R12_a * R23_c_dot) * inv_R33
+
+        return pqr_cmd, (0, 0, 0, 0)
 
     def roll_pitch_control(self, accel_cmd, attitude, thrust):
         """
@@ -172,8 +206,8 @@ class QuadcopterController:
         # bx_err = (bx_cmd - R[1, 2])
         # by_err = (by_cmd - R[0, 2])
 
-        by_err = (bx_cmd - proj_z_y)  # roll
-        bx_err = (by_cmd - proj_z_x)  # pitch
+        bx_err = (bx_cmd - proj_z_y)  # roll
+        by_err = (by_cmd - proj_z_x)  # pitch
 
         bx_p_term = self.kp_bank * bx_err
         by_p_term = self.kp_bank * by_err
@@ -188,8 +222,58 @@ class QuadcopterController:
         r21 = proj_y_y / proj_z_z
         r22 = -proj_y_x / proj_z_z
 
-        pqr_cmd[1] = r11 * bx_p_term + r12 * by_p_term
-        pqr_cmd[0] = -(r21 * bx_p_term + r22 * by_p_term)
+        pqr_cmd[1] = -(r11 * bx_p_term + r12 * by_p_term)
+        pqr_cmd[0] = r21 * bx_p_term + r22 * by_p_term
+
+        return pqr_cmd, (bx_cmd, by_cmd, bx_err, by_err)
+
+    def roll_pitch_control_3(self, accel_cmd, attitude, thrust):
+        """
+        Calculate a desired pitch and roll angle rates based on a desired global
+          lateral acceleration, the current attitude of the quad, and desired
+          collective thrust command
+
+        Args:
+            accel_cmd: desired acceleration in global XY coordinates [m/s2]
+            attitude: current or estimated attitude of the vehicle
+            coll_thrust_cmd: desired collective thrust of the quad [N]
+
+        Returns:
+            A 3x1 numpy array containing the desired pitch and roll rates. The Z
+                    element of the V3F should be left at its default value (0)
+        """
+
+        pqr_cmd = np.zeros(3)
+        R = attitude.as_matrix()
+        if thrust == 0:
+            return pqr_cmd
+
+        coll_accel = -thrust / self.mass
+
+        bx_cmd = np.clip(
+            accel_cmd[0] / coll_accel,
+            -self.max_tilt_angle,
+            +self.max_tilt_angle
+        )
+        by_cmd = np.clip(
+            accel_cmd[1] / coll_accel,
+            -self.max_tilt_angle,
+            +self.max_tilt_angle
+        )
+
+        bx_err = (bx_cmd - R[0, 2])
+        by_err = (by_cmd - R[1, 2])
+
+        bx_p_term = self.kp_bank * bx_err
+        by_p_term = self.kp_bank * by_err
+
+        r11 = +R[1, 0] / R[2, 2]
+        r12 = -R[0, 0] / R[2, 2]
+        r21 = +R[1, 1] / R[2, 2]
+        r22 = -R[0, 1] / R[2, 2]
+
+        pqr_cmd[1] = -(r11 * bx_p_term + r12 * by_p_term)
+        pqr_cmd[0] = r21 * bx_p_term + r22 * by_p_term
 
         return pqr_cmd, (bx_cmd, by_cmd, bx_err, by_err)
 
@@ -255,10 +339,7 @@ class QuadcopterController:
           a 4-vec with motor commands
         """
 
-        # TODO: check correctness
-        # TODO: check
-
-        l = self.l / np.sqrt(2.0)
+        l = self.l * np.sqrt(2.0) / 2
 
         t1 = moment_cmd[0] / l
         t2 = moment_cmd[1] / l
@@ -312,7 +393,7 @@ class QuadcopterController:
             +self.max_accel_xy,
         )
 
-        des_omega, (bx_cmd, by_cmd, bx_err, by_err) = self.roll_pitch_control(
+        des_omega, (bx_cmd, by_cmd, bx_err, by_err) = self.roll_pitch_control_3(
             des_acc, est_att, thrust)
 
         traj_euler_angles = t_att.as_euler('yxz', degrees=False)
@@ -320,13 +401,11 @@ class QuadcopterController:
         est_yaw = est_att.as_euler('yxz', degrees=False)[2]
         des_omega[2] = self.yaw_control(traj_yaw, est_yaw)
 
-        # print("des_omega", des_omega)
-
         des_moment = self.body_rate_control(des_omega, est_omega)
 
         return (
             self.generate_motor_commands(thrust, des_moment),
-            (bx_cmd, by_cmd, bx_err, by_err, des_acc, des_omega),
+            (thrust, bx_cmd, by_cmd, bx_err, by_err, des_acc, des_omega),
         )
 
 # ----
