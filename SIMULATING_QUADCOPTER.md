@@ -35,7 +35,7 @@ A typical drone controller should run on 100Hz frequency, but in this case frequ
 
 ## Reference Implementation: Genesis
 
-[Jupyter](uav_control-genesis.ipynb)
+[Jupyter](uav_control-genesis-sim.ipynb)
 
 <img src="imgs/genesis.png" height="600">
 
