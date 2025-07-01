@@ -189,7 +189,7 @@ async def main():
 
     print("flying drone to -5, 3, 10")
     (times, positions, attitudes) = await tune_controller(
-        kp_pqr=np.array([45, 45, 10]),
+        kp_pqr=np.array([45, 45, 45]),
         ki_pos_z=2,
         kp_pos_z=6,
         kp_vel_z=12,
